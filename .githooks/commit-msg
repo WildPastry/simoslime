@@ -1,0 +1,52 @@
+#!/bin/sh
+# Reject commit messages that aren't Conventional Commits with a body:
+#   type(scope): subject
+#   <blank line>
+#   Two to four short lines: what changed and why.
+
+COMMIT_MSG_FILE="$1"
+
+# The message as git stores it: comment lines dropped, then leading blank lines dropped.
+MESSAGE="$(sed -e '/^#/d' "$COMMIT_MSG_FILE" | sed -e '/[^[:space:]]/,$!d')"
+SUBJECT="$(printf '%s\n' "$MESSAGE" | sed -n '1p' | tr -d '\r')"
+
+# Nothing to check (e.g. empty commit) -> let git decide.
+[ -z "$SUBJECT" ] && exit 0
+
+# Let git's own auto-generated messages through untouched.
+case "$SUBJECT" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
+esac
+
+# Conventional Commits: type(optional-scope)!?: subject
+PATTERN='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'
+
+if ! printf '%s\n' "$SUBJECT" | grep -Eq "$PATTERN"; then
+  cat >&2 <<EOF
+
+  Commit blocked: message is not a Conventional Commit.
+
+    Got:   $SUBJECT
+    Want:  type(scope): subject      e.g. feat(title): add quit button
+    Types: feat fix docs style refactor perf test build ci chore revert
+EOF
+  exit 1
+fi
+
+# The body: line 2 blank, line 3 the first line of plain-English body.
+LINE2="$(printf '%s\n' "$MESSAGE" | sed -n '2p' | tr -d '[:space:]')"
+LINE3="$(printf '%s\n' "$MESSAGE" | sed -n '3p' | tr -d '[:space:]')"
+
+if [ -n "$LINE2" ] || [ -z "$LINE3" ]; then
+  cat >&2 <<EOF
+
+  Commit blocked: the message needs a body.
+
+    Line 1: $SUBJECT
+    Line 2: blank
+    Line 3+: two to four short lines saying what changed and why.
+EOF
+  exit 1
+fi
+
+exit 0

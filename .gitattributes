@@ -1,0 +1,4 @@
+# Every text file is stored and checked out with LF, whatever the committing
+# machine's defaults. Without this, a CRLF checkout breaks the sh commit hook,
+# and a Windows tool that meets a CRLF file rewrites it whole.
+* text=auto eol=lf

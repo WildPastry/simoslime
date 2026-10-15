@@ -1,0 +1,28 @@
+{
+  "about": "The agent skills this repo's workflow calls. Personal scope, never vendored: a personal skill of the same name would shadow a repo copy. /setup-skills installs anything missing into ~/.claude/skills and updates the rest; the SessionStart hook in .claude/settings.json reports what is missing. Keep this file identical in every repo that shares the workflow.",
+  "skills": [
+    { "name": "code-review", "source": "mattpocock/skills", "role": "the review chunk: standards and spec, in parallel" },
+    { "name": "receiving-code-review", "source": "obra/superpowers", "role": "how review findings are weighed before they are applied" },
+    { "name": "writing-plans", "source": "obra/superpowers", "role": "the chunk plan, saved to ~/.claude/plans" },
+    { "name": "grilling", "source": "mattpocock/skills", "role": "the design interview" },
+    { "name": "grill-me", "source": "mattpocock/skills", "role": "/grill-me entry point" },
+    { "name": "grill-with-docs", "source": "mattpocock/skills", "role": "/grill-with-docs entry point" },
+    { "name": "domain-modeling", "source": "mattpocock/skills", "role": "glossary and decision records during a grill" },
+    { "name": "research", "source": "mattpocock/skills", "role": "primary-source research written to docs/reference" },
+    { "name": "tdd", "source": "mattpocock/skills", "role": "test-first builds" },
+    { "name": "diagnosing-bugs", "source": "mattpocock/skills", "role": "diagnosis loop for hard bugs" },
+    { "name": "resolving-merge-conflicts", "source": "mattpocock/skills", "role": "in-progress merge or rebase conflicts" },
+    { "name": "codebase-design", "source": "mattpocock/skills", "role": "design lens on a change" },
+    { "name": "improve-codebase-architecture", "source": "mattpocock/skills", "role": "whole-tree architecture review" },
+    { "name": "triage", "source": "mattpocock/skills", "role": "moves issues through the five triage labels" },
+    { "name": "to-tickets", "source": "mattpocock/skills", "role": "a plan into tracer-bullet issues" },
+    { "name": "to-spec", "source": "mattpocock/skills", "role": "a conversation into a spec issue" },
+    { "name": "wayfinder", "source": "mattpocock/skills", "role": "a map of decision issues for work too big for one session" },
+    { "name": "ui-ux-pro-max", "source": "nextlevelbuilder/ui-ux-pro-max-skill", "role": "the design gate: styles, palettes, type, a11y" },
+    { "name": "web-design-guidelines", "source": "vercel-labs/agent-skills", "role": "/web-design-guidelines <files>: review UI against Vercel's guidelines" },
+    { "name": "web-design-reviewer", "source": "github/awesome-copilot", "role": "/web-design-reviewer: visual review of a running site" }
+  ],
+  "plugins": [
+    { "id": "frontend-design@claude-plugins-official", "role": "the design gate: distinctive, production-grade UI; invoked as /frontend-design:frontend-design" }
+  ]
+}
