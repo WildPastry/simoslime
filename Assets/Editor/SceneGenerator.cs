@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using SimoSlime.Game;
+using SimoSlime.Rules;
 using TMPro;
 using UnityEditor;
 using UnityEditor.Events;
@@ -39,7 +40,6 @@ namespace SimoSlime.Editor
         private static readonly Vector2 MenuButtonSize = new Vector2(360f, 96f);
         private static readonly Vector2 CardSize = new Vector2(200f, 280f);
         private const float CardSpacing = 24f;
-        private const int MaxHandSize = 5;
 
         private static TMP_FontAsset font;
 
@@ -223,36 +223,37 @@ namespace SimoSlime.Editor
             var screen = new GameObject("FightScreen").AddComponent<FightScreen>();
             new GameObject("BackToTitleOnEsc").AddComponent<BackToTitleOnEsc>();
 
-            var enemy = new Vector2(0.5f, 0.6f);
+            var enemyAnchor = new Vector2(0.5f, 0.6f);
             var slime = new GameObject("Slime", typeof(RectTransform));
             slime.transform.SetParent(canvas, false);
-            Place((RectTransform)slime.transform, enemy, Vector2.zero, new Vector2(300f, 300f));
+            Place((RectTransform)slime.transform, enemyAnchor, Vector2.zero, new Vector2(300f, 300f));
             var slimeImage = slime.AddComponent<Image>();
             slimeImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(CirclePath);
             slimeImage.color = Palette.Slime;
             slimeImage.raycastTarget = false;
 
-            var line = new Vector2(400f, 60f);
-            TextMeshProUGUI intent = AddText(canvas, "IntentText", "Intent: attack 6", enemy, new Vector2(0f, 200f), line, 36f, Palette.Text);
-            TextMeshProUGUI enemyName = AddText(canvas, "EnemyNameText", "Slime", enemy, new Vector2(0f, -190f), line, 36f, Palette.Text);
-            TextMeshProUGUI enemyHp = AddText(canvas, "EnemyHpText", "HP 30/30", enemy, new Vector2(0f, -245f), line, 40f, Palette.Hp, bold: true);
+            var lineSize = new Vector2(400f, 60f);
+            TextMeshProUGUI intent = AddText(canvas, "IntentText", "Intent: attack 6", enemyAnchor, new Vector2(0f, 200f), lineSize, 36f, Palette.Text);
+            TextMeshProUGUI enemyName = AddText(canvas, "EnemyNameText", "Slime", enemyAnchor, new Vector2(0f, -190f), lineSize, 36f, Palette.Text);
+            TextMeshProUGUI enemyHp = AddText(canvas, "EnemyHpText", "HP 30/30", enemyAnchor, new Vector2(0f, -245f), lineSize, 40f, Palette.Hp, bold: true);
 
-            var left = new Vector2(0f, 0f);
-            var right = new Vector2(1f, 0f);
-            var stat = new Vector2(320f, 60f);
-            var pile = new Vector2(320f, 50f);
-            TextMeshProUGUI energy = AddText(canvas, "EnergyText", "Energy 3", left, new Vector2(200f, 310f), stat, 48f, Palette.Text, bold: true);
-            TextMeshProUGUI draw = AddText(canvas, "DrawText", "Draw 5", left, new Vector2(200f, 170f), pile, 32f, Palette.Text);
-            Button endTurn = AddButton(canvas, "EndTurnButton", "End Turn", right, new Vector2(-220f, 430f), new Vector2(320f, 90f));
+            var leftCorner = new Vector2(0f, 0f);
+            var rightCorner = new Vector2(1f, 0f);
+            var statSize = new Vector2(320f, 60f);
+            var pileSize = new Vector2(320f, 50f);
+            TextMeshProUGUI energy = AddText(canvas, "EnergyText", "Energy 3", leftCorner, new Vector2(200f, 310f), statSize, 48f, Palette.Text, bold: true);
+            TextMeshProUGUI draw = AddText(canvas, "DrawText", "Draw 5", leftCorner, new Vector2(200f, 170f), pileSize, 32f, Palette.Text);
+            Button endTurn = AddButton(canvas, "EndTurnButton", "End Turn", rightCorner, new Vector2(-220f, 430f), new Vector2(320f, 90f));
             UnityEventTools.AddPersistentListener(endTurn.onClick, screen.EndTurn);
-            TextMeshProUGUI playerHp = AddText(canvas, "PlayerHpText", "HP 40/40", right, new Vector2(-220f, 310f), stat, 48f, Palette.Hp, bold: true);
-            TextMeshProUGUI block = AddText(canvas, "BlockText", "Block 0", right, new Vector2(-220f, 250f), stat, 40f, Palette.Block);
-            TextMeshProUGUI discard = AddText(canvas, "DiscardText", "Discard 0", right, new Vector2(-220f, 170f), pile, 32f, Palette.Text);
+            TextMeshProUGUI playerHp = AddText(canvas, "PlayerHpText", "HP 40/40", rightCorner, new Vector2(-220f, 310f), statSize, 48f, Palette.Hp, bold: true);
+            TextMeshProUGUI block = AddText(canvas, "BlockText", "Block 0", rightCorner, new Vector2(-220f, 250f), statSize, 40f, Palette.Block);
+            TextMeshProUGUI discard = AddText(canvas, "DiscardText", "Discard 0", rightCorner, new Vector2(-220f, 170f), pileSize, 32f, Palette.Text);
 
             // A centred row of cards, as wide as a full hand.
             var hand = new GameObject("Hand", typeof(RectTransform));
             hand.transform.SetParent(canvas, false);
-            float handWidth = MaxHandSize * CardSize.x + (MaxHandSize - 1) * CardSpacing;
+            int handSize = FightConfig.Default().HandSize;
+            float handWidth = handSize * CardSize.x + (handSize - 1) * CardSpacing;
             Place((RectTransform)hand.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 30f), new Vector2(handWidth, CardSize.y));
             var row = hand.AddComponent<HorizontalLayoutGroup>();
             row.spacing = CardSpacing;
