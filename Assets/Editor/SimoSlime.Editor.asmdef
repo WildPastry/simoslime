@@ -2,7 +2,11 @@
     "name": "SimoSlime.Editor",
     "rootNamespace": "SimoSlime.Editor",
     "references": [
-        "SimoSlime.Rules"
+        "SimoSlime.Game",
+        "SimoSlime.Rules",
+        "Unity.TextMeshPro",
+        "UnityEngine.UI",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

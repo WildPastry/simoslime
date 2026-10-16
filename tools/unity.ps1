@@ -6,6 +6,7 @@
     Mirrors Assets, Packages and ProjectSettings to %LOCALAPPDATA%\SimoSlime-mirror with
     robocopy /MIR, runs the task there and logs to Logs\unity-<task>.log, so the human's open
     editor never blocks it. The editor version comes from ProjectSettings\ProjectVersion.txt.
+    A Unity run still going after 30 minutes is killed and fails.
 
       tests     EditMode tests. Fails unless Logs\tests.xml reports failed="0".
       generate  SceneGenerator.GenerateAll, then copies the generated files back to the repo.
@@ -48,6 +49,21 @@ function Format-Arg([string]$Value) {
     return $Value
 }
 
+# A previous run's import workers can outlive it for a while and hold the mirror's asset-database
+# lock; a new editor started then hangs at "Failed to initialise lock". Wait for them to go.
+function Get-MirrorUnity {
+    @(Get-CimInstance Win32_Process -Filter "Name='Unity.exe'" |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Replace('/', '\').Contains($mirror) })
+}
+$waitUntil = (Get-Date).AddMinutes(2)
+while ((Get-MirrorUnity).Count -gt 0) {
+    if ((Get-Date) -gt $waitUntil) {
+        Write-Host "FAIL: Unity is still running on $mirror; close it and retry"
+        exit 1
+    }
+    Start-Sleep -Seconds 2
+}
+
 foreach ($dir in 'Assets', 'Packages', 'ProjectSettings') {
     Sync-Dir (Join-Path $repo $dir) (Join-Path $mirror $dir)
 }
@@ -62,7 +78,8 @@ switch ($Task) {
         $unityArgs += '-runTests', '-testPlatform', 'EditMode', '-testResults', $results
     }
     'generate' {
-        $unityArgs += '-quit', '-executeMethod', 'SimoSlime.Editor.SceneGenerator.GenerateAll'
+        # No -quit: the generator waits for a package import, then exits the editor itself.
+        $unityArgs += '-executeMethod', 'SimoSlime.Editor.SceneGenerator.GenerateAll'
     }
     'build' {
         if (-not $Out) { $Out = if ($Development) { 'Build\Dev' } else { 'Build\Release' } }
@@ -81,7 +98,12 @@ $start.UseShellExecute = $false
 # WaitForExit on the process alone: Unity leaves helper processes (compiler server, licensing
 # client) running, and waiting on the whole tree would hang.
 $process = [System.Diagnostics.Process]::Start($start)
-$process.WaitForExit()
+$timeoutMinutes = 30
+if (-not $process.WaitForExit($timeoutMinutes * 60 * 1000)) {
+    $process.Kill()
+    Write-Host "FAIL: Unity still running after $timeoutMinutes min, killed; see $log"
+    exit 1
+}
 $code = $process.ExitCode
 
 switch ($Task) {
