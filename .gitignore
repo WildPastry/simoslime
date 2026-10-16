@@ -110,3 +110,6 @@ InitTestScene*.unity*
 
 # SimoSlime: installer output (tools/build.ps1). Build/ and Logs/ are covered above.
 /[Rr]elease/
+
+# Windows Explorer folder settings.
+[Dd]esktop.ini

@@ -1,0 +1,22 @@
+{
+    "name": "SimoSlime.Editor",
+    "rootNamespace": "SimoSlime.Editor",
+    "references": [
+        "SimoSlime.Game",
+        "SimoSlime.Rules",
+        "Unity.TextMeshPro",
+        "UnityEngine.UI",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
