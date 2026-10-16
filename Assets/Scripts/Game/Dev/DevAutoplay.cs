@@ -24,10 +24,10 @@ namespace SimoSlime.Game.Dev
         private const float TimeoutSeconds = 30f;
 
         private string script;
-        private string shots;
+        private string shotsFolder;
         private int shotScale = 1;
         private float deadline;
-        private string exception;
+        private string failureMessage;
         private bool finished;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -43,7 +43,7 @@ namespace SimoSlime.Game.Dev
             DontDestroyOnLoad(go);
             DevAutoplay autoplay = go.AddComponent<DevAutoplay>();
             autoplay.script = script;
-            autoplay.shots = Arg("-shots") ?? "shots";
+            autoplay.shotsFolder = Arg("-shots") ?? "shots";
             if (int.TryParse(Arg("-shotscale"), out int scale) && scale > 1)
             {
                 autoplay.shotScale = scale;
@@ -62,7 +62,7 @@ namespace SimoSlime.Game.Dev
 
         private IEnumerator Start()
         {
-            Directory.CreateDirectory(shots);
+            Directory.CreateDirectory(shotsFolder);
             deadline = Time.realtimeSinceStartup + TimeoutSeconds;
             while (!SplashScreen.isFinished)
             {
@@ -77,7 +77,7 @@ namespace SimoSlime.Game.Dev
             }
 
             yield return run;
-            Finish(exception);
+            Finish(failureMessage);
         }
 
         private void Update()
@@ -156,7 +156,7 @@ namespace SimoSlime.Game.Dev
 
         private IEnumerator Screenshot(string file)
         {
-            string path = Path.GetFullPath(Path.Combine(shots, file));
+            string path = Path.GetFullPath(Path.Combine(shotsFolder, file));
             File.Delete(path);
             yield return new WaitForEndOfFrame();
             ScreenCapture.CaptureScreenshot(path, shotScale);
@@ -184,9 +184,9 @@ namespace SimoSlime.Game.Dev
 
         private void OnLog(string condition, string stackTrace, LogType type)
         {
-            if (type == LogType.Exception && exception == null)
+            if (type == LogType.Exception && failureMessage == null)
             {
-                exception = $"exception logged: {condition}";
+                failureMessage = $"exception logged: {condition}";
             }
         }
 

@@ -24,7 +24,6 @@ namespace SimoSlime.Editor
         private const string ScenesFolder = "Assets/Scenes";
         private const string TitlePath = ScenesFolder + "/Title.unity";
         private const string FightPath = ScenesFolder + "/Fight.unity";
-        private const string SampleScenePath = ScenesFolder + "/SampleScene.unity";
         private const string FontPath = "Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset";
         private const string ButtonSpritePath = "UI/Skin/UISprite.psd";
 
@@ -70,10 +69,6 @@ namespace SimoSlime.Editor
 
             WriteTitle();
             WriteFight();
-            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(SampleScenePath) != null)
-            {
-                AssetDatabase.DeleteAsset(SampleScenePath);
-            }
 
             EditorBuildSettings.scenes = new[]
             {
@@ -97,6 +92,8 @@ namespace SimoSlime.Editor
         // reload, so generation resumes from whichever comes first: the import callback, or
         // ResumeAfterReload once scripts are back. Clearing the flag stops it running twice.
         private const string ResumeKey = "SimoSlime.GenerateAfterTmpImport";
+        private const string ResumeTriesKey = "SimoSlime.GenerateAfterTmpImport.Tries";
+        private const int MaxResumeTries = 600;
 
         private static void ImportTmpResourcesThen()
         {
@@ -123,6 +120,7 @@ namespace SimoSlime.Editor
             }
 
             SessionState.SetBool(ResumeKey, true);
+            SessionState.SetInt(ResumeTriesKey, 0);
             AssetDatabase.importPackageCompleted += Completed;
             AssetDatabase.importPackageFailed += Failed;
             UnityEditor.AssetPackage.Package.Import(package, false);
@@ -152,6 +150,15 @@ namespace SimoSlime.Editor
 
             if (AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath) == null)
             {
+                int tries = SessionState.GetInt(ResumeTriesKey, 0) + 1;
+                SessionState.SetInt(ResumeTriesKey, tries);
+                if (tries > MaxResumeTries)
+                {
+                    SessionState.EraseBool(ResumeKey);
+                    Run(() => throw new InvalidOperationException($"TMP Essential Resources still missing after {MaxResumeTries} editor ticks: no {FontPath}"));
+                    return;
+                }
+
                 EditorApplication.delayCall += Resume;
                 return;
             }
