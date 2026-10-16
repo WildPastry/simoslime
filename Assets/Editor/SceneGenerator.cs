@@ -228,7 +228,11 @@ namespace SimoSlime.Editor
 
             var events = new GameObject("EventSystem");
             events.AddComponent<EventSystem>();
-            ObjectFactory.AddComponent<InputSystemUIInputModule>(events);
+            // Mouse only, plus Esc and Enter handled by each screen: no arrow-key navigation, and
+            // Enter never also clicks whichever button was last pressed.
+            var module = ObjectFactory.AddComponent<InputSystemUIInputModule>(events);
+            module.move = null;
+            module.submit = null;
 
             return scene;
         }

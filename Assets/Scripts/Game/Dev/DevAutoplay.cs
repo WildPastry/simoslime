@@ -3,6 +3,9 @@ using System;
 using System.Collections;
 using System.IO;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -90,8 +93,43 @@ namespace SimoSlime.Game.Dev
             switch (name)
             {
                 case "title": return Title();
+                case "enter-selected": return EnterSelected();
                 default: return null;
             }
+        }
+
+        // A button left selected (pressed, then dragged off) must not take Enter as well: on the
+        // title, Enter only plays. Fails if Enter also clicks the selected Quit.
+        private IEnumerator EnterSelected()
+        {
+            yield return WaitForScene(SceneNames.Title);
+            bool quitRequested = false;
+            bool RefuseQuit()
+            {
+                quitRequested = true;
+                return false;
+            }
+
+            Application.wantsToQuit += RefuseQuit;
+            EventSystem.current.SetSelectedGameObject(GameObject.Find("QuitButton"));
+            yield return null;
+            yield return PressEnter();
+            yield return WaitForScene(SceneNames.Fight);
+            Application.wantsToQuit -= RefuseQuit;
+            if (quitRequested)
+            {
+                Finish("Enter clicked the selected QuitButton as well as playing");
+            }
+        }
+
+        // A real key press through the Input System, as a keyboard would send it.
+        private static IEnumerator PressEnter()
+        {
+            Keyboard keyboard = Keyboard.current ?? InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter));
+            yield return null;
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState());
+            yield return null;
         }
 
         // Title screen, then Play, then the fight placeholder.
