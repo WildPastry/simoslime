@@ -6,7 +6,8 @@
     Mirrors Assets, Packages and ProjectSettings to %LOCALAPPDATA%\SimoSlime-mirror with
     robocopy /MIR, runs the task there and logs to Logs\unity-<task>.log, so the human's open
     editor never blocks it. The editor version comes from ProjectSettings\ProjectVersion.txt.
-    A Unity run still going after 30 minutes is killed and fails.
+    A Unity run still going after 30 minutes is killed and fails. A run that fails on a known
+    compiler-infrastructure fault (not a C# error in the project) is retried once.
 
       tests     EditMode tests. Fails unless Logs\tests.xml reports failed="0".
       generate  SceneGenerator.GenerateAll, then copies the generated files back to the repo.
@@ -55,14 +56,17 @@ function Get-MirrorUnity {
     @(Get-CimInstance Win32_Process -Filter "Name='Unity.exe'" |
         Where-Object { $_.CommandLine -and $_.CommandLine.Replace('/', '\').Contains($mirror) })
 }
-$waitUntil = (Get-Date).AddMinutes(2)
-while ((Get-MirrorUnity).Count -gt 0) {
-    if ((Get-Date) -gt $waitUntil) {
-        Write-Host "FAIL: Unity is still running on $mirror; close it and retry"
-        exit 1
+function Wait-MirrorFree {
+    $waitUntil = (Get-Date).AddMinutes(2)
+    while ((Get-MirrorUnity).Count -gt 0) {
+        if ((Get-Date) -gt $waitUntil) {
+            Write-Host "FAIL: Unity is still running on $mirror; close it and retry"
+            exit 1
+        }
+        Start-Sleep -Seconds 2
     }
-    Start-Sleep -Seconds 2
 }
+Wait-MirrorFree
 
 foreach ($dir in 'Assets', 'Packages', 'ProjectSettings') {
     Sync-Dir (Join-Path $repo $dir) (Join-Path $mirror $dir)
@@ -91,20 +95,38 @@ switch ($Task) {
     }
 }
 
-Write-Host "Unity $version, task $Task, log $log"
-$start = New-Object System.Diagnostics.ProcessStartInfo $unity
-$start.Arguments = ($unityArgs | ForEach-Object { Format-Arg $_ }) -join ' '
-$start.UseShellExecute = $false
-# WaitForExit on the process alone: Unity leaves helper processes (compiler server, licensing
-# client) running, and waiting on the whole tree would hang.
-$process = [System.Diagnostics.Process]::Start($start)
-$timeoutMinutes = 30
-if (-not $process.WaitForExit($timeoutMinutes * 60 * 1000)) {
-    $process.Kill()
-    Write-Host "FAIL: Unity still running after $timeoutMinutes min, killed; see $log"
-    exit 1
+function Invoke-Unity {
+    Write-Host "Unity $version, task $Task, log $log"
+    $start = New-Object System.Diagnostics.ProcessStartInfo $unity
+    $start.Arguments = ($unityArgs | ForEach-Object { Format-Arg $_ }) -join ' '
+    $start.UseShellExecute = $false
+    # WaitForExit on the process alone: Unity leaves helper processes (compiler server, licensing
+    # client) running, and waiting on the whole tree would hang.
+    $process = [System.Diagnostics.Process]::Start($start)
+    $timeoutMinutes = 30
+    if (-not $process.WaitForExit($timeoutMinutes * 60 * 1000)) {
+        $process.Kill()
+        Write-Host "FAIL: Unity still running after $timeoutMinutes min, killed; see $log"
+        exit 1
+    }
+    return $process.ExitCode
 }
-$code = $process.ExitCode
+
+$code = Invoke-Unity
+# Script compilation sometimes fails before any of our code compiles: a C# compiler server left
+# by an earlier run "can't open" a response file that is there, or the IL post-processor won't
+# start. Stopping the compiler servers and running once more clears it. That is safe even for
+# a server the human's editor is using: Roslyn's "Compiler Server" doc says a server can always
+# be killed, as its client falls back to compiling in-process. The failed log is kept.
+$infraFault = 'error CS2011: Error opening response file|IL Post Processor runner process failed to start'
+if ($code -ne 0 -and (Select-String -Path $log -Pattern $infraFault -Quiet)) {
+    Copy-Item $log ($log -replace '\.log$', '-failed.log') -Force
+    Write-Host 'Unity hit a compiler-infrastructure fault; stopping C# compiler servers and retrying once'
+    Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'VBCSCompiler\.dll' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Wait-MirrorFree
+    $code = Invoke-Unity
+}
 
 switch ($Task) {
     'tests' {

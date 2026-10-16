@@ -23,6 +23,9 @@ OutputDir=..\Release
 OutputBaseFilename=SimoSlime-Setup-{#AppVersion}
 UninstallDisplayName=SimoSlime
 UninstallDisplayIcon={app}\SimoSlime.exe
+; Installing over a running game closes it first. Force, because Unity's crash handler, which
+; the game starts beside itself, can ignore the polite request, and setup would then stop.
+CloseApplications=force
 WizardStyle=modern
 Compression=lzma2
 SolidCompression=yes

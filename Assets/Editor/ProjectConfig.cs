@@ -9,7 +9,7 @@ namespace SimoSlime.Editor
     /// </summary>
     public static class ProjectConfig
     {
-        public const string Version = "0.0.1";
+        public const string Version = "0.1.0";
 
         [MenuItem("SimoSlime/Apply Project Config")]
         public static void Apply()

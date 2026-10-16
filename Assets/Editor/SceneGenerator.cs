@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
 using SimoSlime.Game;
+using SimoSlime.Rules;
 using TMPro;
 using UnityEditor;
 using UnityEditor.Events;
@@ -24,12 +26,20 @@ namespace SimoSlime.Editor
         private const string ScenesFolder = "Assets/Scenes";
         private const string TitlePath = ScenesFolder + "/Title.unity";
         private const string FightPath = ScenesFolder + "/Fight.unity";
+        private const string PrefabsFolder = "Assets/Prefabs";
+        private const string CardPrefabPath = PrefabsFolder + "/Card.prefab";
+        private const string ArtFolder = "Assets/Art";
+        private const string CirclePath = ArtFolder + "/Circle.png";
+        private const string AudioFolder = "Assets/Audio";
         private const string FontPath = "Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset";
         private const string ButtonSpritePath = "UI/Skin/UISprite.psd";
+        private const string PanelSpritePath = "UI/Skin/Background.psd";
 
         private static readonly Vector2 ReferenceResolution = new Vector2(1920f, 1080f);
         private static readonly Vector2 Centre = new Vector2(0.5f, 0.5f);
         private static readonly Vector2 MenuButtonSize = new Vector2(360f, 96f);
+        private static readonly Vector2 CardSize = new Vector2(200f, 280f);
+        private const float CardSpacing = 24f;
 
         private static TMP_FontAsset font;
 
@@ -67,6 +77,8 @@ namespace SimoSlime.Editor
                 throw new InvalidOperationException($"TMP Essential Resources are missing: no {FontPath}");
             }
 
+            WriteCircle();
+            WriteCardPrefab();
             WriteTitle();
             WriteFight();
 
@@ -199,15 +211,221 @@ namespace SimoSlime.Editor
             SaveStable(scene, TitlePath);
         }
 
+        // Layout F1 Corners: the Slime above centre, the player's numbers in the bottom corners,
+        // the hand along the bottom, and the result panel (R1) hidden over everything.
         private static void WriteFight()
         {
             Scene scene = NewScene();
+            // Loaded after NewScene, which unloads assets nothing in the open scene references.
+            CardView cardPrefab = AssetDatabase.LoadAssetAtPath<CardView>(CardPrefabPath)
+                ?? throw new InvalidOperationException($"No CardView on {CardPrefabPath}");
             RectTransform canvas = NewCanvas();
+            var screen = new GameObject("FightScreen").AddComponent<FightScreen>();
             new GameObject("BackToTitleOnEsc").AddComponent<BackToTitleOnEsc>();
 
-            AddText(canvas, "PlaceholderText", "Fight goes here. Esc for menu.", Centre, Vector2.zero, new Vector2(1400f, 120f), 48f, Palette.Text);
+            var enemyAnchor = new Vector2(0.5f, 0.6f);
+            var slime = new GameObject("Slime", typeof(RectTransform));
+            slime.transform.SetParent(canvas, false);
+            Place((RectTransform)slime.transform, enemyAnchor, Vector2.zero, new Vector2(300f, 300f));
+            var slimeImage = slime.AddComponent<Image>();
+            slimeImage.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(CirclePath);
+            slimeImage.color = Palette.Slime;
+            slimeImage.raycastTarget = false;
+
+            var lineSize = new Vector2(400f, 60f);
+            TextMeshProUGUI intent = AddText(canvas, "IntentText", "Intent: attack 6", enemyAnchor, new Vector2(0f, 200f), lineSize, 36f, Palette.Text);
+            TextMeshProUGUI enemyName = AddText(canvas, "EnemyNameText", "Slime", enemyAnchor, new Vector2(0f, -190f), lineSize, 36f, Palette.Text);
+            TextMeshProUGUI enemyHp = AddText(canvas, "EnemyHpText", "HP 30/30", enemyAnchor, new Vector2(0f, -245f), lineSize, 40f, Palette.Hp, bold: true);
+
+            var leftCorner = new Vector2(0f, 0f);
+            var rightCorner = new Vector2(1f, 0f);
+            var statSize = new Vector2(320f, 60f);
+            var pileSize = new Vector2(320f, 50f);
+            TextMeshProUGUI energy = AddText(canvas, "EnergyText", "Energy 3", leftCorner, new Vector2(200f, 310f), statSize, 48f, Palette.Text, bold: true);
+            TextMeshProUGUI draw = AddText(canvas, "DrawText", "Draw 5", leftCorner, new Vector2(200f, 170f), pileSize, 32f, Palette.Text);
+            Button endTurn = AddButton(canvas, "EndTurnButton", "End Turn", rightCorner, new Vector2(-220f, 430f), new Vector2(320f, 90f));
+            UnityEventTools.AddPersistentListener(endTurn.onClick, screen.EndTurn);
+            TextMeshProUGUI playerHp = AddText(canvas, "PlayerHpText", "HP 40/40", rightCorner, new Vector2(-220f, 310f), statSize, 48f, Palette.Hp, bold: true);
+            TextMeshProUGUI block = AddText(canvas, "BlockText", "Block 0", rightCorner, new Vector2(-220f, 250f), statSize, 40f, Palette.Block);
+            TextMeshProUGUI discard = AddText(canvas, "DiscardText", "Discard 0", rightCorner, new Vector2(-220f, 170f), pileSize, 32f, Palette.Text);
+
+            // A centred row of cards, as wide as a full hand.
+            var hand = new GameObject("Hand", typeof(RectTransform));
+            hand.transform.SetParent(canvas, false);
+            int handSize = FightConfig.Default().HandSize;
+            float handWidth = handSize * CardSize.x + (handSize - 1) * CardSpacing;
+            Place((RectTransform)hand.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 30f), new Vector2(handWidth, CardSize.y));
+            var row = hand.AddComponent<HorizontalLayoutGroup>();
+            row.spacing = CardSpacing;
+            row.childAlignment = TextAnchor.MiddleCenter;
+            row.childControlWidth = false;
+            row.childControlHeight = false;
+            row.childForceExpandWidth = false;
+            row.childForceExpandHeight = false;
+
+            ResultPanel result = AddResultPanel(canvas);
+            SoundBank sounds = AddSoundBank();
+
+            Wire(screen,
+                ("enemyNameText", enemyName), ("enemyHpText", enemyHp), ("intentText", intent),
+                ("playerHpText", playerHp), ("blockText", block), ("energyText", energy),
+                ("drawText", draw), ("discardText", discard), ("hand", hand.transform),
+                ("cardPrefab", cardPrefab), ("endTurnButton", endTurn),
+                ("endTurnLabel", endTurn.GetComponentInChildren<TextMeshProUGUI>()), ("resultPanel", result),
+                ("sounds", sounds));
 
             SaveStable(scene, FightPath);
+        }
+
+        // One 2D AudioSource that plays the four clips in Assets/Audio.
+        private static SoundBank AddSoundBank()
+        {
+            var go = new GameObject("SoundBank");
+            var source = go.AddComponent<AudioSource>();
+            source.playOnAwake = false;
+            var bank = go.AddComponent<SoundBank>();
+            Wire(bank, ("source", source), ("hit", Clip("hit")), ("block", Clip("block")), ("win", Clip("win")), ("lose", Clip("lose")));
+            return bank;
+        }
+
+        private static AudioClip Clip(string name)
+        {
+            string path = $"{AudioFolder}/{name}.ogg";
+            return AssetDatabase.LoadAssetAtPath<AudioClip>(path)
+                ?? throw new InvalidOperationException($"No audio clip at {path}");
+        }
+
+        // Layout R1: a 60% black dim over the whole fight, which also blocks clicks to it, and a
+        // centred panel with the message and two stacked buttons. Saved hidden.
+        private static ResultPanel AddResultPanel(RectTransform canvas)
+        {
+            var root = new GameObject("ResultPanel", typeof(RectTransform));
+            root.transform.SetParent(canvas, false);
+            var rootRect = (RectTransform)root.transform;
+            rootRect.anchorMin = Vector2.zero;
+            rootRect.anchorMax = Vector2.one;
+            rootRect.sizeDelta = Vector2.zero;
+            root.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.6f);
+            var result = root.AddComponent<ResultPanel>();
+
+            var panel = new GameObject("Panel", typeof(RectTransform));
+            panel.transform.SetParent(rootRect, false);
+            var panelRect = (RectTransform)panel.transform;
+            Place(panelRect, Centre, Vector2.zero, new Vector2(720f, 560f));
+            var panelImage = panel.AddComponent<Image>();
+            panelImage.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>(PanelSpritePath);
+            panelImage.type = Image.Type.Sliced;
+            panelImage.color = Palette.Panel;
+
+            TextMeshProUGUI message = AddText(panelRect, "ResultMessage", "You win!", Centre, new Vector2(0f, 140f), new Vector2(680f, 140f), 96f, Palette.Text, bold: true);
+            Button playAgain = AddButton(panelRect, "PlayAgainButton", "Play Again", Centre, new Vector2(0f, -60f), MenuButtonSize);
+            Button mainMenu = AddButton(panelRect, "MainMenuButton", "Main Menu", Centre, new Vector2(0f, -180f), MenuButtonSize);
+            UnityEventTools.AddPersistentListener(playAgain.onClick, result.PlayAgain);
+            UnityEventTools.AddPersistentListener(mainMenu.onClick, result.MainMenu);
+
+            Wire(result, ("message", message));
+            root.SetActive(false);
+            return result;
+        }
+
+        // The Card prefab: a button tinted the card colour, with its cost top-left and its name
+        // and effect centred below. It shows a Strike until FightScreen fills it in.
+        private static void WriteCardPrefab()
+        {
+            EnsureFolder(PrefabsFolder);
+            var go = new GameObject("Card", typeof(RectTransform));
+            var rect = (RectTransform)go.transform;
+            rect.sizeDelta = CardSize;
+
+            var image = go.AddComponent<Image>();
+            image.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>(ButtonSpritePath);
+            image.type = Image.Type.Sliced;
+            image.color = Palette.Card;
+            var button = go.AddComponent<Button>();
+            button.targetGraphic = image;
+            ColorBlock colors = button.colors;
+            colors.disabledColor = ColorBlock.defaultColorBlock.disabledColor;
+            button.colors = colors;
+
+            var top = new Vector2(0.5f, 1f);
+            var topLeft = new Vector2(0f, 1f);
+            TextMeshProUGUI cost = AddText(rect, "Cost", "1", topLeft, new Vector2(16f, -10f), new Vector2(80f, 50f), 40f, Palette.CardText, bold: true, pivot: topLeft);
+            cost.alignment = TextAlignmentOptions.TopLeft;
+            TextMeshProUGUI cardName = AddText(rect, "Name", "STRIKE", top, new Vector2(0f, -72f), new Vector2(CardSize.x, 40f), 28f, Palette.CardText, bold: true, pivot: top);
+            cardName.alignment = TextAlignmentOptions.Top;
+            TextMeshProUGUI effect = AddText(rect, "Effect", "Deal 6", top, new Vector2(0f, -150f), new Vector2(CardSize.x - 24f, 110f), 28f, Palette.CardText, pivot: top);
+            effect.alignment = TextAlignmentOptions.Top;
+            effect.textWrappingMode = TextWrappingModes.Normal;
+
+            var view = go.AddComponent<CardView>();
+            Wire(view, ("button", button), ("nameText", cardName), ("costText", cost), ("effectText", effect));
+
+            PrefabUtility.SaveAsPrefabAsset(go, CardPrefabPath);
+            UnityEngine.Object.DestroyImmediate(go);
+            StabiliseFile(CardPrefabPath);
+        }
+
+        // A white anti-aliased circle, tinted per Image. Written only when its pixels change, so
+        // a regenerate leaves the file alone.
+        private static void WriteCircle()
+        {
+            const int size = 256;
+            const float radius = size / 2f - 1f;
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x + 0.5f - size / 2f;
+                    float dy = y + 0.5f - size / 2f;
+                    float coverage = Mathf.Clamp01(radius - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(coverage * 255f));
+                }
+            }
+
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.SetPixels32(pixels);
+            byte[] png = texture.EncodeToPNG();
+            UnityEngine.Object.DestroyImmediate(texture);
+
+            EnsureFolder(ArtFolder);
+            string file = Path.GetFullPath(CirclePath);
+            if (!File.Exists(file) || !File.ReadAllBytes(file).SequenceEqual(png))
+            {
+                File.WriteAllBytes(file, png);
+            }
+
+            AssetDatabase.ImportAsset(CirclePath, ImportAssetOptions.ForceUpdate);
+            var importer = (TextureImporter)AssetImporter.GetAtPath(CirclePath);
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.mipmapEnabled = false;
+            importer.alphaIsTransparency = true;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.SaveAndReimport();
+        }
+
+        private static void EnsureFolder(string path)
+        {
+            if (!AssetDatabase.IsValidFolder(path))
+            {
+                AssetDatabase.CreateFolder(Path.GetDirectoryName(path), Path.GetFileName(path));
+            }
+        }
+
+        // Sets a component's [SerializeField] private fields, as dragging into them in the
+        // Inspector would.
+        private static void Wire(Component component, params (string Field, UnityEngine.Object Value)[] fields)
+        {
+            var serialized = new SerializedObject(component);
+            foreach ((string field, UnityEngine.Object value) in fields)
+            {
+                SerializedProperty property = serialized.FindProperty(field)
+                    ?? throw new InvalidOperationException($"{component.GetType().Name} has no serialized field {field}");
+                property.objectReferenceValue = value;
+            }
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // Saves, then swaps Unity's random object IDs for stable ones so a regenerate that
@@ -215,6 +433,11 @@ namespace SimoSlime.Editor
         private static void SaveStable(Scene scene, string path)
         {
             EditorSceneManager.SaveScene(scene, path);
+            StabiliseFile(path);
+        }
+
+        private static void StabiliseFile(string path)
+        {
             string file = Path.GetFullPath(path);
             File.WriteAllText(file, SceneIds.Stabilise(File.ReadAllText(file)));
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
@@ -258,11 +481,11 @@ namespace SimoSlime.Editor
             return (RectTransform)go.transform;
         }
 
-        private static TextMeshProUGUI AddText(RectTransform parent, string name, string text, Vector2 anchor, Vector2 position, Vector2 size, float fontSize, Color color, bool bold = false)
+        private static TextMeshProUGUI AddText(RectTransform parent, string name, string text, Vector2 anchor, Vector2 position, Vector2 size, float fontSize, Color color, bool bold = false, Vector2? pivot = null)
         {
             var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
-            Place((RectTransform)go.transform, anchor, position, size);
+            Place((RectTransform)go.transform, anchor, pivot ?? Centre, position, size);
 
             var label = go.AddComponent<TextMeshProUGUI>();
             label.font = font;
@@ -303,9 +526,14 @@ namespace SimoSlime.Editor
 
         private static void Place(RectTransform rect, Vector2 anchor, Vector2 position, Vector2 size)
         {
+            Place(rect, anchor, Centre, position, size);
+        }
+
+        private static void Place(RectTransform rect, Vector2 anchor, Vector2 pivot, Vector2 position, Vector2 size)
+        {
             rect.anchorMin = anchor;
             rect.anchorMax = anchor;
-            rect.pivot = Centre;
+            rect.pivot = pivot;
             rect.anchoredPosition = position;
             rect.sizeDelta = size;
         }
