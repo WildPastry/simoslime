@@ -11,12 +11,11 @@
     check passes.
 #>
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'common.ps1')
 
-$appId = '{AB94FE52-C183-4AEE-94E3-3E5B9487E074}'
+$appId = Get-AppId
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\SimoSlime'
 $exe = Join-Path $installDir 'SimoSlime.exe'
-$uninstaller = Join-Path $installDir 'unins000.exe'
 $appsEntry = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($appId)_is1"
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'SimoSlime.lnk'
 $desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) 'SimoSlime.lnk'
@@ -25,9 +24,8 @@ $publisherKey = 'HKCU:\Software\WildPastry'
 $localLow = Join-Path $env:USERPROFILE 'AppData\LocalLow\WildPastry\SimoSlime'
 $playerLog = Join-Path $localLow 'Player.log'
 
-$versionLine = Select-String -Path (Join-Path $repo 'ProjectSettings\ProjectSettings.asset') -Pattern '^\s*bundleVersion:\s*(\S+)'
-$version = $versionLine.Matches[0].Groups[1].Value
-$setup = Join-Path $repo "Release\SimoSlime-Setup-$version.exe"
+$version = Get-BundleVersion
+$setup = Join-Path $Repo "Release\SimoSlime-Setup-$version.exe"
 if (-not (Test-Path $setup)) { throw "No $setup; run tools\build.ps1 first" }
 
 $failures = 0
@@ -35,17 +33,21 @@ function Check([bool]$Condition, [string]$What) {
     if ($Condition) { Write-Host "ok    $What" } else { Write-Host "FAIL  $What"; $script:failures++ }
 }
 
-# The uninstaller re-launches itself from %TEMP% and returns at once, so wait on its effects.
+# Uninstalls whatever the Apps entry points at, wherever it was installed. The uninstaller
+# re-launches itself from %TEMP% and returns at once, so wait on its effects.
 function Uninstall {
-    if (-not (Test-Path $uninstaller)) { return }
+    if (-not (Test-Path $appsEntry)) { return }
+    $entry = Get-ItemProperty $appsEntry
+    $uninstaller = $entry.UninstallString.Trim('"')
+    $folder = $entry.InstallLocation
     Start-Process $uninstaller -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$logs\uninstall.log`"" -Wait
     $until = (Get-Date).AddSeconds(60)
-    while (((Test-Path $appsEntry) -or (Test-Path $installDir)) -and (Get-Date) -lt $until) {
+    while (((Test-Path $appsEntry) -or ($folder -and (Test-Path $folder))) -and (Get-Date) -lt $until) {
         Start-Sleep -Milliseconds 500
     }
 }
 
-$logs = Join-Path $repo 'Logs'
+$logs = Join-Path $Repo 'Logs'
 New-Item -ItemType Directory -Force $logs | Out-Null
 
 Write-Host "Removing any existing install"
@@ -81,7 +83,9 @@ Check (Test-Path $playerLog) 'Player.log written'
 if (Test-Path $playerLog) {
     Check (-not (Select-String -Path $playerLog -Pattern 'Exception' -Quiet)) 'no exception in Player.log'
 }
-Check (Test-Path $prefsKey) 'PlayerPrefs registry key exists before uninstall'
+# The installer creates the key empty, so check for a value the game itself wrote on quit.
+$prefs = @(Get-Item $prefsKey -ErrorAction SilentlyContinue | ForEach-Object { $_.GetValueNames() } | Where-Object { $_ -like 'Screenmanager*' })
+Check ($prefs.Count -gt 0) "game saved PlayerPrefs before uninstall ($($prefs.Count) Screenmanager values)"
 
 Write-Host 'Uninstalling'
 Uninstall
@@ -96,7 +100,10 @@ Check (-not (Test-Path $prefsKey)) 'PlayerPrefs registry key gone'
 $leftovers = @(Get-ChildItem $localLow -Recurse -Force -File -ErrorAction SilentlyContinue |
     ForEach-Object { $_.FullName.Substring($localLow.Length + 1) })
 $gameLeftovers = @($leftovers | Where-Object { $_ -ne 'TestResults.xml' -and $_ -notmatch '^Unity\\[^\\]+\\Editor\\' })
-$editorRunning = @(Get-Process Unity -ErrorAction SilentlyContinue).Count -gt 0
+# Only an editor open on this project shares the folder (the mirror's batch runs are elsewhere).
+$projectArg = '-projectpath\s+"?' + [regex]::Escape($Repo) + '"?(\s|$)'
+$editorRunning = @(Get-CimInstance Win32_Process -Filter "Name='Unity.exe'" |
+    Where-Object { $_.CommandLine -and $_.CommandLine.Replace('/', '\') -match $projectArg }).Count -gt 0
 Check ($gameLeftovers.Count -eq 0) "no game files left in LocalLow ($($gameLeftovers -join ', '))"
 if ($editorRunning) {
     if ($leftovers.Count -gt 0) { Write-Host "note  a Unity editor is running; its own files stay in $localLow" }
