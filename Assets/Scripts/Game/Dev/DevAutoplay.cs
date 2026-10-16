@@ -13,7 +13,8 @@ namespace SimoSlime.Game.Dev
     /// Drives a Development build from the command line so a screen can be proved without a
     /// human: <c>SimoSlime.exe -autoplay title -shots Logs/shots/title</c>. It logs
     /// "AUTOPLAY PASS name" or "AUTOPLAY FAIL name: reason" and quits with 0 or 1. Any logged
-    /// exception fails the run. Not compiled into release builds.
+    /// exception fails the run. <c>-shotscale 2</c> captures at twice the window size, for
+    /// resolutions bigger than the display. Not compiled into release builds.
     /// </summary>
     public class DevAutoplay : MonoBehaviour
     {
@@ -21,6 +22,7 @@ namespace SimoSlime.Game.Dev
 
         private string script;
         private string shots;
+        private int shotScale = 1;
         private float deadline;
         private string exception;
         private bool finished;
@@ -39,6 +41,10 @@ namespace SimoSlime.Game.Dev
             DevAutoplay autoplay = go.AddComponent<DevAutoplay>();
             autoplay.script = script;
             autoplay.shots = Arg("-shots") ?? "shots";
+            if (int.TryParse(Arg("-shotscale"), out int scale) && scale > 1)
+            {
+                autoplay.shotScale = scale;
+            }
         }
 
         private void Awake()
@@ -115,7 +121,7 @@ namespace SimoSlime.Game.Dev
             string path = Path.GetFullPath(Path.Combine(shots, file));
             File.Delete(path);
             yield return new WaitForEndOfFrame();
-            ScreenCapture.CaptureScreenshot(path);
+            ScreenCapture.CaptureScreenshot(path, shotScale);
             while (!File.Exists(path))
             {
                 yield return null;
