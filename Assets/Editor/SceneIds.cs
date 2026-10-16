@@ -15,7 +15,6 @@ namespace SimoSlime.Editor
     /// </summary>
     public static class SceneIds
     {
-        private const string GameObjectClass = "1";
         private const long SmallestId = 1_000_000;
 
         private static readonly Regex Header = new Regex(@"^--- !u!(\d+) &(-?\d+)(.*)$", RegexOptions.Multiline);
@@ -60,7 +59,7 @@ namespace SimoSlime.Editor
             }
 
             Dictionary<long, Doc> byId = docs.ToDictionary(d => d.Id);
-            Dictionary<long, string> keys = Keys(docs, byId);
+            Dictionary<long, string> keys = StableKeys(docs, byId);
 
             var used = new HashSet<long>(docs.Where(d => !keys.ContainsKey(d.Id)).Select(d => d.Id));
             var map = new Dictionary<long, long>();
@@ -94,87 +93,90 @@ namespace SimoSlime.Editor
             return output.ToString();
         }
 
-        // A stable key for every GameObject (its path of names) and component (its GameObject's
-        // path, class, script and position among same-kind components on that GameObject).
-        private static Dictionary<long, string> Keys(List<Doc> docs, Dictionary<long, Doc> byId)
+        // A stable key for every GameObject and component, assigned by walking the hierarchy in
+        // its saved order: roots as SceneRoots lists them, children as each m_Children lists them.
+        // A GameObject's key is its parent's key plus its name, with "#n" for the nth same-named
+        // sibling; a component's key is its GameObject's key plus class, script and ordinal.
+        private static Dictionary<long, string> StableKeys(List<Doc> docs, Dictionary<long, Doc> byId)
         {
-            var gameObjects = docs.Where(d => d.ClassId == GameObjectClass).ToList();
-            var transformOf = new Dictionary<long, Doc>();
+            var ownerOf = new Dictionary<long, long>();
+            var rootTransforms = new List<long>();
             foreach (Doc doc in docs)
             {
                 Match owner = Owner.Match(doc.Body);
-                if (owner.Success && Father.IsMatch(doc.Body))
+                Match father = Father.Match(doc.Body);
+                if (owner.Success && father.Success)
                 {
-                    transformOf[long.Parse(owner.Groups[1].Value)] = doc;
-                }
-            }
-
-            var paths = new Dictionary<long, string>();
-            string PathOf(Doc gameObject)
-            {
-                if (paths.TryGetValue(gameObject.Id, out string known))
-                {
-                    return known;
-                }
-
-                string parentPath = string.Empty;
-                if (transformOf.TryGetValue(gameObject.Id, out Doc transform))
-                {
-                    long fatherId = long.Parse(Father.Match(transform.Body).Groups[1].Value);
-                    if (byId.TryGetValue(fatherId, out Doc father) && Owner.Match(father.Body) is Match m && m.Success
-                        && byId.TryGetValue(long.Parse(m.Groups[1].Value), out Doc parent))
+                    ownerOf[doc.Id] = long.Parse(owner.Groups[1].Value);
+                    if (father.Groups[1].Value == "0")
                     {
-                        parentPath = PathOf(parent);
+                        rootTransforms.Add(doc.Id);
                     }
                 }
-
-                string path = parentPath + "/" + NameOf(gameObject);
-                paths[gameObject.Id] = path;
-                return path;
             }
 
-            var keys = new Dictionary<long, string>();
-            var seen = new Dictionary<string, int>();
-            foreach (Doc gameObject in gameObjects.OrderBy(g => SiblingOrder(g, transformOf, byId)))
-            {
-                string path = PathOf(gameObject);
-                seen.TryGetValue(path, out int twins);
-                seen[path] = twins + 1;
-                keys[gameObject.Id] = twins == 0 ? path : path + "#" + twins;
+            // Saved scenes list their roots; a prefab has one root and no SceneRoots document.
+            Doc sceneRoots = docs.FirstOrDefault(d => d.Body.Contains("\n  m_Roots:"));
+            List<long> roots = sceneRoots != null ? IdList(sceneRoots.Body, "m_Roots") : rootTransforms;
 
-                var kinds = new Dictionary<string, int>();
-                foreach (Match component in Component.Matches(gameObject.Body))
+            var keys = new Dictionary<long, string>();
+            void Visit(List<long> transforms, string parentKey)
+            {
+                var twins = new Dictionary<string, int>();
+                foreach (long transformId in transforms)
                 {
-                    long componentId = long.Parse(component.Groups[1].Value);
-                    if (!byId.TryGetValue(componentId, out Doc doc))
+                    if (!ownerOf.TryGetValue(transformId, out long gameObjectId) || !byId.TryGetValue(gameObjectId, out Doc gameObject))
                     {
                         continue;
                     }
 
-                    Match script = Script.Match(doc.Body);
-                    string kind = doc.ClassId + (script.Success ? ":" + script.Groups[1].Value : string.Empty);
-                    kinds.TryGetValue(kind, out int ordinal);
-                    kinds[kind] = ordinal + 1;
-                    keys[componentId] = keys[gameObject.Id] + "|" + kind + "|" + ordinal;
+                    string name = NameOf(gameObject);
+                    twins.TryGetValue(name, out int twin);
+                    twins[name] = twin + 1;
+                    string key = parentKey + "/" + name + (twin == 0 ? string.Empty : "#" + twin);
+                    keys[gameObjectId] = key;
+                    AddComponentKeys(gameObject, key, byId, keys);
+                    Visit(IdList(byId[transformId].Body, "m_Children"), key);
                 }
             }
 
+            Visit(roots, string.Empty);
             return keys;
         }
 
-        // Where a GameObject sits among its siblings, so same-named twins get a stable "#n".
-        private static int SiblingOrder(Doc gameObject, Dictionary<long, Doc> transformOf, Dictionary<long, Doc> byId)
+        private static void AddComponentKeys(Doc gameObject, string key, Dictionary<long, Doc> byId, Dictionary<long, string> keys)
         {
-            if (!transformOf.TryGetValue(gameObject.Id, out Doc transform))
+            var kinds = new Dictionary<string, int>();
+            foreach (Match component in Component.Matches(gameObject.Body))
             {
-                return 0;
+                long componentId = long.Parse(component.Groups[1].Value);
+                if (!byId.TryGetValue(componentId, out Doc doc))
+                {
+                    continue;
+                }
+
+                Match script = Script.Match(doc.Body);
+                string kind = doc.ClassId + (script.Success ? ":" + script.Groups[1].Value : string.Empty);
+                kinds.TryGetValue(kind, out int ordinal);
+                kinds[kind] = ordinal + 1;
+                keys[componentId] = key + "|" + kind + "|" + ordinal;
+            }
+        }
+
+        // The file IDs listed under a top-level field such as "m_Children:" or "m_Roots:".
+        private static List<long> IdList(string body, string field)
+        {
+            Match list = Regex.Match(body, @"^  " + field + @":[ \t]*\r?\n((?:  - \{fileID: -?\d+\}\r?\n?)*)", RegexOptions.Multiline);
+            var ids = new List<long>();
+            if (list.Success)
+            {
+                foreach (Match entry in LocalReference.Matches(list.Groups[1].Value))
+                {
+                    ids.Add(long.Parse(entry.Groups[1].Value));
+                }
             }
 
-            long fatherId = long.Parse(Father.Match(transform.Body).Groups[1].Value);
-            string list = byId.TryGetValue(fatherId, out Doc father) ? father.Body
-                : byId.Values.FirstOrDefault(d => d.Body.Contains("m_Roots:"))?.Body ?? string.Empty;
-            int at = list.IndexOf("{fileID: " + transform.Id + "}", StringComparison.Ordinal);
-            return at < 0 ? int.MaxValue : at;
+            return ids;
         }
 
         private static string NameOf(Doc gameObject)

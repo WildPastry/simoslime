@@ -53,6 +53,48 @@ namespace SimoSlime.Editor.Tests
             return null;
         }
 
+        // Canvas > Hand > two Cards, each with a Label: twins under twins.
+        private static string Hand(long labelA, long labelARect, long labelB, long labelBRect)
+        {
+            const long canvas = 300000001, canvasRect = 300000002, hand = 300000003, handRect = 300000004;
+            const long cardA = 300000005, cardARect = 300000006, cardB = 300000007, cardBRect = 300000008;
+
+            string GameObject(long id, long rect, string name) =>
+                $"--- !u!1 &{id}\nGameObject:\n  m_Component:\n  - component: {{fileID: {rect}}}\n  m_Name: {name}\n";
+            string Rect(long id, long owner, long father, params long[] children) =>
+                $"--- !u!224 &{id}\nRectTransform:\n  m_GameObject: {{fileID: {owner}}}\n  m_Children:"
+                + (children.Length == 0 ? " []\n" : "\n" + string.Concat(children.Select(c => $"  - {{fileID: {c}}}\n")))
+                + $"  m_Father: {{fileID: {father}}}\n";
+
+            var docs = new List<(long Id, string Text)>
+            {
+                (canvas, GameObject(canvas, canvasRect, "Canvas")),
+                (canvasRect, Rect(canvasRect, canvas, 0, handRect)),
+                (hand, GameObject(hand, handRect, "Hand")),
+                (handRect, Rect(handRect, hand, canvasRect, cardARect, cardBRect)),
+                (cardA, GameObject(cardA, cardARect, "Card")),
+                (cardARect, Rect(cardARect, cardA, handRect, labelARect)),
+                (cardB, GameObject(cardB, cardBRect, "Card")),
+                (cardBRect, Rect(cardBRect, cardB, handRect, labelBRect)),
+                (labelA, GameObject(labelA, labelARect, "Label")),
+                (labelARect, Rect(labelARect, labelA, cardARect)),
+                (labelB, GameObject(labelB, labelBRect, "Label")),
+                (labelBRect, Rect(labelBRect, labelB, cardBRect)),
+                (RootsId, $"--- !u!1660057539 &{RootsId}\nSceneRoots:\n  m_Roots:\n  - {{fileID: {canvasRect}}}\n"),
+            };
+            return string.Concat(docs.OrderBy(d => d.Id).Select(d => d.Text));
+        }
+
+        [Test]
+        public void Twins_under_twins_keep_stable_ids()
+        {
+            // The second save mints the Labels' IDs in the opposite order.
+            string first = SceneIds.Stabilise(Hand(400000001, 400000002, 500000001, 500000002));
+            string second = SceneIds.Stabilise(Hand(500000001, 500000002, 400000001, 400000002));
+
+            Assert.That(second, Is.EqualTo(first));
+        }
+
         [Test]
         public void Same_scene_twice_gives_same_text()
         {
