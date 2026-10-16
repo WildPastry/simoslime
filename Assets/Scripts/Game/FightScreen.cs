@@ -31,6 +31,7 @@ namespace SimoSlime.Game
         [SerializeField] private Button endTurnButton;
         [SerializeField] private TMP_Text endTurnLabel;
         [SerializeField] private ResultPanel resultPanel;
+        [SerializeField] private SoundBank sounds;
 
         private readonly List<CardView> cards = new List<CardView>();
         private Fight fight;
@@ -79,7 +80,8 @@ namespace SimoSlime.Game
             busy = true;
             Refresh();
             yield return new WaitForSeconds(EnemyTurnPause);
-            fight.EndTurn();
+            EnemyTurnResult attack = fight.EndTurn();
+            sounds.Play(attack.HpLost > 0 ? Sound.Hit : Sound.Block);
             busy = false;
             Refresh();
             ShowResultIfOver();
@@ -92,7 +94,8 @@ namespace SimoSlime.Game
                 return;
             }
 
-            fight.Play(handIndex);
+            CardDef played = CardDef.Of(fight.Play(handIndex));
+            sounds.Play(played.Damage > 0 ? Sound.Hit : Sound.Block);
             Refresh();
             ShowResultIfOver();
         }
@@ -101,6 +104,7 @@ namespace SimoSlime.Game
         {
             if (fight.Outcome != FightOutcome.Ongoing)
             {
+                sounds.Play(fight.Outcome == FightOutcome.Won ? Sound.Win : Sound.Lose);
                 resultPanel.Show(fight.Outcome);
             }
         }

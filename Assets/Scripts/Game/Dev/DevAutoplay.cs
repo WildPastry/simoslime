@@ -31,6 +31,7 @@ namespace SimoSlime.Game.Dev
         private float deadline;
         private string failureMessage;
         private bool finished;
+        private readonly List<string> soundsPlayed = new List<string>();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
@@ -41,6 +42,8 @@ namespace SimoSlime.Game.Dev
                 return;
             }
 
+            // Muted: autoplay runs while the human works. The SOUND log lines prove each play.
+            AudioListener.volume = 0f;
             var go = new GameObject("DevAutoplay");
             DontDestroyOnLoad(go);
             DevAutoplay autoplay = go.AddComponent<DevAutoplay>();
@@ -135,7 +138,7 @@ namespace SimoSlime.Game.Dev
             }
 
             yield return Screenshot("won.png");
-            if (!Expect("result message", TextOf("ResultMessage"), "You win!"))
+            if (!Expect("result message", TextOf("ResultMessage"), "You win!") || !ExpectSounds("Hit", "Block", "Win"))
             {
                 yield break;
             }
@@ -156,7 +159,7 @@ namespace SimoSlime.Game.Dev
             }
 
             yield return Screenshot("lost.png");
-            if (!Expect("result message", TextOf("ResultMessage"), "You died."))
+            if (!Expect("result message", TextOf("ResultMessage"), "You died.") || !ExpectSounds("Hit", "Lose"))
             {
                 yield break;
             }
@@ -386,6 +389,26 @@ namespace SimoSlime.Game.Dev
             {
                 failureMessage = $"exception logged: {condition}";
             }
+
+            // SoundBank logs "SOUND <name> <clip>" for each sound it plays.
+            if (type == LogType.Log && condition.StartsWith("SOUND "))
+            {
+                soundsPlayed.Add(condition.Split(' ')[1]);
+            }
+        }
+
+        private bool ExpectSounds(params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (!soundsPlayed.Contains(name))
+                {
+                    Finish($"sound {name} never played; played: {string.Join(", ", soundsPlayed)}");
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private void Finish(string failure)

@@ -29,6 +29,7 @@ namespace SimoSlime.Editor
         private const string CardPrefabPath = PrefabsFolder + "/Card.prefab";
         private const string ArtFolder = "Assets/Art";
         private const string CirclePath = ArtFolder + "/Circle.png";
+        private const string AudioFolder = "Assets/Audio";
         private const string FontPath = "Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset";
         private const string ButtonSpritePath = "UI/Skin/UISprite.psd";
         private const string PanelSpritePath = "UI/Skin/Background.psd";
@@ -262,15 +263,35 @@ namespace SimoSlime.Editor
             row.childForceExpandHeight = false;
 
             ResultPanel result = AddResultPanel(canvas);
+            SoundBank sounds = AddSoundBank();
 
             Wire(screen,
                 ("enemyNameText", enemyName), ("enemyHpText", enemyHp), ("intentText", intent),
                 ("playerHpText", playerHp), ("blockText", block), ("energyText", energy),
                 ("drawText", draw), ("discardText", discard), ("hand", hand.transform),
                 ("cardPrefab", cardPrefab), ("endTurnButton", endTurn),
-                ("endTurnLabel", endTurn.GetComponentInChildren<TextMeshProUGUI>()), ("resultPanel", result));
+                ("endTurnLabel", endTurn.GetComponentInChildren<TextMeshProUGUI>()), ("resultPanel", result),
+                ("sounds", sounds));
 
             SaveStable(scene, FightPath);
+        }
+
+        // One 2D AudioSource that plays the four clips in Assets/Audio.
+        private static SoundBank AddSoundBank()
+        {
+            var go = new GameObject("SoundBank");
+            var source = go.AddComponent<AudioSource>();
+            source.playOnAwake = false;
+            var bank = go.AddComponent<SoundBank>();
+            Wire(bank, ("source", source), ("hit", Clip("hit")), ("block", Clip("block")), ("win", Clip("win")), ("lose", Clip("lose")));
+            return bank;
+        }
+
+        private static AudioClip Clip(string name)
+        {
+            string path = $"{AudioFolder}/{name}.ogg";
+            return AssetDatabase.LoadAssetAtPath<AudioClip>(path)
+                ?? throw new InvalidOperationException($"No audio clip at {path}");
         }
 
         // Layout R1: a 60% black dim over the whole fight, which also blocks clicks to it, and a

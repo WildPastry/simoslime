@@ -6,3 +6,6 @@ Strikes and five Defends. It's made in Unity 6.6 (the editor version is in
 installer, run `tools/build.ps1` from the repo root in Windows PowerShell; it writes
 `Release/SimoSlime-Setup-<version>.exe`. That script needs the Unity editor named in
 `ProjectVersion.txt`, installed through Unity Hub, and Inno Setup 7.
+
+The four sounds in `Assets/Audio` are from Kenney's Impact Sounds and Music Jingles packs
+(kenney.nl), released under CC0.
