@@ -115,8 +115,9 @@ function Invoke-Unity {
 $code = Invoke-Unity
 # Script compilation sometimes fails before any of our code compiles: a C# compiler server left
 # by an earlier run "can't open" a response file that is there, or the IL post-processor won't
-# start. Stopping the compiler servers (a compile falls back to in-process if its server goes)
-# and running once more clears it. The failed run's log is kept beside the new one.
+# start. Stopping the compiler servers and running once more clears it. That is safe even for
+# a server the human's editor is using: Roslyn's "Compiler Server" doc says a server can always
+# be killed, as its client falls back to compiling in-process. The failed log is kept.
 $infraFault = 'error CS2011: Error opening response file|IL Post Processor runner process failed to start'
 if ($code -ne 0 -and (Select-String -Path $log -Pattern $infraFault -Quiet)) {
     Copy-Item $log ($log -replace '\.log$', '-failed.log') -Force

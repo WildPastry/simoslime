@@ -44,6 +44,19 @@ function Check([bool]$Condition, [string]$What) {
     if ($Condition) { Write-Host "ok    $What" } else { Write-Host "FAIL  $What"; $script:failures++ }
 }
 
+# Runs a setup or uninstaller silently, logging to Logs\<LogName>, and waits for it.
+function Invoke-Silently([string]$Program, [string]$LogName) {
+    Start-Process $Program -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$logs\$LogName`"" -Wait -PassThru
+}
+
+# Starts the installed game windowed and returns it 8 s later, once it has had time to fail.
+function Start-Game {
+    $game = Start-Process $exe -ArgumentList '-screen-fullscreen 0 -screen-width 1280 -screen-height 720' -WindowStyle Normal -PassThru
+    Start-Sleep -Seconds 8
+    $game.Refresh()
+    return $game
+}
+
 # Uninstalls whatever the Apps entry points at, wherever it was installed. The uninstaller
 # re-launches itself from %TEMP% and returns at once, so wait on its effects.
 function Uninstall {
@@ -51,7 +64,7 @@ function Uninstall {
     $entry = Get-ItemProperty $appsEntry
     $uninstaller = $entry.UninstallString.Trim('"')
     $folder = $entry.InstallLocation
-    Start-Process $uninstaller -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$logs\uninstall.log`"" -Wait
+    Invoke-Silently $uninstaller 'uninstall.log' | Out-Null
     $until = (Get-Date).AddSeconds(60)
     while (((Test-Path $appsEntry) -or ($folder -and (Test-Path $folder))) -and (Get-Date) -lt $until) {
         Start-Sleep -Milliseconds 500
@@ -68,25 +81,27 @@ Uninstall
 if ($Upgrade) {
     if (-not (Test-Path $Upgrade)) { throw "No older setup at $Upgrade" }
     Write-Host "Installing the older $Upgrade"
-    $old = Start-Process $Upgrade -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$logs\install-old.log`"" -Wait -PassThru
+    $old = Invoke-Silently $Upgrade 'install-old.log'
     Check ($old.ExitCode -eq 0) "older setup exit code 0 (got $($old.ExitCode))"
     $oldVersion = if (Test-Path $appsEntry) { (Get-ItemProperty $appsEntry).DisplayVersion }
     Check ($oldVersion -and $oldVersion -ne $version) "an older version is installed ($oldVersion)"
 
     Write-Host 'Running it while this version installs over it'
-    $running = Start-Process $exe -ArgumentList '-screen-fullscreen 0 -screen-width 1280 -screen-height 720' -WindowStyle Normal -PassThru
-    Start-Sleep -Seconds 8
-    $running.Refresh()
+    $running = Start-Game
     Check (-not $running.HasExited) 'older game running before the upgrade'
 }
 
 Write-Host "Installing $setup"
-$install = Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$logs\install.log`"" -Wait -PassThru
+$install = Invoke-Silently $setup 'install.log'
 Check ($install.ExitCode -eq 0) "setup exit code 0 (got $($install.ExitCode))"
 if ($Upgrade) {
-    # Silent setup closes apps holding its files through the Restart Manager, and logs it.
-    if (-not $running.WaitForExit(5000)) { Stop-Process -Id $running.Id -Force }
-    Check ($running.HasExited -and (Select-String -Path "$logs\install.log" -Pattern 'Shutting down applications using our files' -Quiet)) 'setup closed the running older game'
+    # Silent setup closes apps holding its files through the Restart Manager and logs it; Inno
+    # logs "Some applications could not be shut down." when that fails. Whether the old game
+    # exited is read before this script kills a leftover, so only setup can make it pass.
+    $closedBySetup = $running.WaitForExit(5000)
+    if (-not $closedBySetup) { Stop-Process -Id $running.Id -Force }
+    $installLog = Get-Content "$logs\install.log" -Raw
+    Check ($closedBySetup -and $installLog -match 'Shutting down applications using our files' -and $installLog -notmatch 'could not be shut down') 'setup closed the running older game'
     $entries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
         ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq 'SimoSlime' })
     Check ($entries.Count -eq 1) "one SimoSlime Apps entry (got $($entries.Count))"
@@ -104,9 +119,7 @@ Check (-not (Test-Path (Join-Path $installDir '*DontShip*'))) 'no Burst debug fo
 
 Write-Host 'Running the installed game for 8 s'
 Remove-Item $playerLog -ErrorAction SilentlyContinue
-$game = Start-Process $exe -ArgumentList '-screen-fullscreen 0 -screen-width 1280 -screen-height 720' -WindowStyle Normal -PassThru
-Start-Sleep -Seconds 8
-$game.Refresh()
+$game = Start-Game
 Check (-not $game.HasExited) 'game still running after 8 s'
 # Close it like a user would, so Unity saves its PlayerPrefs on the way out.
 if (-not $game.HasExited) {
