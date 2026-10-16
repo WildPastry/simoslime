@@ -13,8 +13,8 @@ SimoSlime.
 - **Tracker:** GitHub Issues in `WildPastry/simoslime`, via the `gh` CLI.
 - **Green:** `tools/unity.ps1 -Task tests` passes and `tools/unity.ps1 -Task build` succeeds.
   A chunk that touches the installer also needs `tools/build.ps1` to succeed.
-- **Proof of UI:** a Development build run windowed with `-autoplay <script>`, then reading its
-  screenshots and log.
+- **Proof of UI:** `tools/autoplay.ps1 -Script <name>` runs one `DevAutoplay` script on the
+  Development build, windowed; then read its screenshots in `Logs/shots` and its log.
 - **PR:** into `main` from [.github/pull_request_template.md](.github/pull_request_template.md).
 - **Skills:** [.claude/skills-manifest.json](.claude/skills-manifest.json) lists what the
   workflow calls; `/setup-skills` installs them.
