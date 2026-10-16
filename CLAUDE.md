@@ -39,9 +39,11 @@ SimoSlime.
 1. **Never run Unity on the repo folder.** The human's editor may have it open. Use
    `tools/unity.ps1`, which mirrors the project to `%LOCALAPPDATA%\SimoSlime-mirror` and runs
    batchmode there.
-2. **Hand-write a `.meta` for every new file or folder under `Assets/`** (`fileFormatVersion: 2`
-   plus a fresh 32-hex `guid`), in the same commit. Otherwise the mirror and the editor mint
-   different GUIDs and break script references.
+2. **Hand-write a `.meta` for every new file or folder you add under `Assets/`**
+   (`fileFormatVersion: 2` plus a fresh 32-hex `guid`), in the same commit. Otherwise the mirror
+   and the editor mint different GUIDs and break script references. Assets that `generate`
+   creates (scenes, prefabs, TextMesh Pro resources) are the exception: their Unity-minted
+   `.meta` comes back from the mirror with them, so both sides share one GUID.
 3. **Scenes, the Card prefab and project settings are generated** by
    `SimoSlime.Editor.SceneGenerator`. Change the generator, never the scene; hand edits are
    overwritten on the next generate.
