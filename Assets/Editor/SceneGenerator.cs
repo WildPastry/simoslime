@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using SimoSlime.Game;
 using TMPro;
 using UnityEditor;
@@ -188,7 +189,7 @@ namespace SimoSlime.Editor
             UnityEventTools.AddPersistentListener(play.onClick, screen.Play);
             UnityEventTools.AddPersistentListener(quit.onClick, screen.Quit);
 
-            EditorSceneManager.SaveScene(scene, TitlePath);
+            SaveStable(scene, TitlePath);
         }
 
         private static void WriteFight()
@@ -199,7 +200,17 @@ namespace SimoSlime.Editor
 
             AddText(canvas, "PlaceholderText", "Fight goes here. Esc for menu.", Centre, Vector2.zero, new Vector2(1400f, 120f), 48f, Palette.Text);
 
-            EditorSceneManager.SaveScene(scene, FightPath);
+            SaveStable(scene, FightPath);
+        }
+
+        // Saves, then swaps Unity's random object IDs for stable ones so a regenerate that
+        // changes nothing leaves the file byte-for-byte the same.
+        private static void SaveStable(Scene scene, string path)
+        {
+            EditorSceneManager.SaveScene(scene, path);
+            string file = Path.GetFullPath(path);
+            File.WriteAllText(file, SceneIds.Stabilise(File.ReadAllText(file)));
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
         }
 
         // A scene with the shared camera and event system.
