@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using SimoSlime.Rules;
 using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace SimoSlime.Game
@@ -45,8 +44,7 @@ namespace SimoSlime.Game
 
         private void Update()
         {
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard != null && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
+            if (EnterKey.WasPressedThisFrame())
             {
                 OnEnter();
             }

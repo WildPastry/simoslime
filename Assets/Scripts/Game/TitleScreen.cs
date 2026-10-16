@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 namespace SimoSlime.Game
@@ -12,8 +11,7 @@ namespace SimoSlime.Game
     {
         private void Update()
         {
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard != null && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
+            if (EnterKey.WasPressedThisFrame())
             {
                 Play();
             }
