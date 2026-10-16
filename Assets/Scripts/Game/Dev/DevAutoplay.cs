@@ -175,8 +175,13 @@ namespace SimoSlime.Game.Dev
         private IEnumerator Spam()
         {
             yield return EnterFight();
-            Button card = GameObject.Find("Card").GetComponent<Button>();
-            Button endTurn = GameObject.Find("EndTurnButton").GetComponent<Button>();
+            Button card = ButtonNamed("Card");
+            Button endTurn = ButtonNamed("EndTurnButton");
+            if (card == null || endTurn == null)
+            {
+                yield break;
+            }
+
             var screen = FindAnyObjectByType<FightScreen>();
             endTurn.onClick.Invoke();
             endTurn.onClick.Invoke();
@@ -211,7 +216,7 @@ namespace SimoSlime.Game.Dev
                 && Expect("enemy HP", TextOf("EnemyHpText"), "HP 30/30")
                 && Expect("cards in hand", CardsInHand().Count.ToString(), "5"))
             {
-                Expect("End Turn interactable", GameObject.Find("EndTurnButton").GetComponent<Button>().interactable.ToString(), "True");
+                Expect("End Turn interactable", InteractableOf("EndTurnButton"), "True");
             }
         }
 
@@ -236,10 +241,10 @@ namespace SimoSlime.Game.Dev
         }
 
         // The enemy's turn is over once End Turn can be pressed again, or the fight has ended.
-        private static IEnumerator WaitForPlayerTurn()
+        private IEnumerator WaitForPlayerTurn()
         {
-            Button endTurn = GameObject.Find("EndTurnButton").GetComponent<Button>();
-            while (!endTurn.interactable && !ResultShown())
+            Button endTurn = ButtonNamed("EndTurnButton");
+            while (endTurn != null && !endTurn.interactable && !ResultShown())
             {
                 yield return null;
             }
@@ -322,7 +327,7 @@ namespace SimoSlime.Game.Dev
             }
 
             // The same press must not also end the first turn in the new scene.
-            Expect("End Turn interactable after Enter played", GameObject.Find("EndTurnButton").GetComponent<Button>().interactable.ToString(), "True");
+            Expect("End Turn interactable after Enter played", InteractableOf("EndTurnButton"), "True");
         }
 
         // A real key press through the Input System, as a keyboard would send it.
@@ -376,15 +381,32 @@ namespace SimoSlime.Game.Dev
 
         private void Click(string objectName)
         {
+            Button button = ButtonNamed(objectName);
+            if (button != null)
+            {
+                button.onClick.Invoke();
+            }
+        }
+
+        // The active button with this name; fails the run, and returns null, if there is none.
+        private Button ButtonNamed(string objectName)
+        {
             GameObject target = GameObject.Find(objectName);
             Button button = target != null ? target.GetComponent<Button>() : null;
             if (button == null)
             {
                 Finish($"no button named {objectName}");
-                return;
+                return null;
             }
 
-            button.onClick.Invoke();
+            return button;
+        }
+
+        private static string InteractableOf(string objectName)
+        {
+            GameObject target = GameObject.Find(objectName);
+            Button button = target != null ? target.GetComponent<Button>() : null;
+            return button != null ? button.interactable.ToString() : $"<no button named {objectName}>";
         }
 
         private void OnLog(string condition, string stackTrace, LogType type)
@@ -394,10 +416,10 @@ namespace SimoSlime.Game.Dev
                 failureMessage = $"exception logged: {condition}";
             }
 
-            // SoundBank logs "SOUND <name> <clip>" for each sound it plays.
-            if (type == LogType.Log && condition.StartsWith("SOUND "))
+            // SoundBank logs "<LogPrefix><name> <clip>" for each sound it plays.
+            if (type == LogType.Log && condition.StartsWith(SoundBank.LogPrefix))
             {
-                soundsPlayed.Add(condition.Split(' ')[1]);
+                soundsPlayed.Add(condition.Substring(SoundBank.LogPrefix.Length).Split(' ')[0]);
             }
         }
 

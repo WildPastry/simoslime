@@ -13,10 +13,13 @@ namespace SimoSlime.Game
 
     /// <summary>
     /// The fight's four sounds (Kenney, CC0), each played once over the top of whatever is
-    /// already playing. Development builds log "SOUND name clip" per play, for autoplay.
+    /// already playing. Development builds log one <see cref="LogPrefix"/> line per play, for autoplay.
     /// </summary>
     public class SoundBank : MonoBehaviour
     {
+        /// <summary>Starts the Development-build log line for each play; autoplay reads it.</summary>
+        public const string LogPrefix = "SOUND ";
+
         [SerializeField] private AudioSource source;
         [SerializeField] private AudioClip hit;
         [SerializeField] private AudioClip block;
@@ -27,7 +30,7 @@ namespace SimoSlime.Game
         {
             AudioClip clip = ClipFor(sound);
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
-            Debug.Log($"SOUND {sound} {clip.name}");
+            Debug.Log($"{LogPrefix}{sound} {clip.name}");
 #endif
             source.PlayOneShot(clip);
         }
