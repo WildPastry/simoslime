@@ -42,8 +42,10 @@ namespace SimoSlime.Game.Dev
                 return;
             }
 
-            // Muted: autoplay runs while the human works. The SOUND log lines prove each play.
+            // Autoplay runs while the human works: muted (the SOUND log lines prove each play), and
+            // kept running when its window loses focus, which would otherwise pause the player.
             AudioListener.volume = 0f;
+            Application.runInBackground = true;
             var go = new GameObject("DevAutoplay");
             DontDestroyOnLoad(go);
             DevAutoplay autoplay = go.AddComponent<DevAutoplay>();
@@ -359,6 +361,8 @@ namespace SimoSlime.Game.Dev
         {
             string path = Path.GetFullPath(Path.Combine(shotsFolder, file));
             File.Delete(path);
+            // Let uGUI's 0.1 s tint fades settle, so a button disabled this frame shows disabled.
+            yield return new WaitForSecondsRealtime(0.2f);
             yield return new WaitForEndOfFrame();
             ScreenCapture.CaptureScreenshot(path, shotScale);
             while (!File.Exists(path))
