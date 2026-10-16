@@ -9,7 +9,18 @@
     up for 8 s with no exception in Player.log; and after uninstall the folder, shortcuts, Apps
     entry, PlayerPrefs registry key and LocalLow log folder are all gone. Exits 0 when every
     check passes.
+
+    With -Upgrade <older setup.exe> it first installs that older version and leaves it running,
+    then installs this version over it. Extra checks: setup closed the running game itself, and
+    there is exactly one SimoSlime Apps entry, at this version.
+
+.EXAMPLE
+    tools\installer-smoke.ps1 -Upgrade Release\SimoSlime-Setup-0.0.1.exe
 #>
+param(
+    [string]$Upgrade
+)
+
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 
@@ -54,9 +65,32 @@ Write-Host "Removing any existing install"
 Get-Process SimoSlime -ErrorAction SilentlyContinue | Stop-Process -Force
 Uninstall
 
+if ($Upgrade) {
+    if (-not (Test-Path $Upgrade)) { throw "No older setup at $Upgrade" }
+    Write-Host "Installing the older $Upgrade"
+    $old = Start-Process $Upgrade -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$logs\install-old.log`"" -Wait -PassThru
+    Check ($old.ExitCode -eq 0) "older setup exit code 0 (got $($old.ExitCode))"
+    $oldVersion = if (Test-Path $appsEntry) { (Get-ItemProperty $appsEntry).DisplayVersion }
+    Check ($oldVersion -and $oldVersion -ne $version) "an older version is installed ($oldVersion)"
+
+    Write-Host 'Running it while this version installs over it'
+    $running = Start-Process $exe -ArgumentList '-screen-fullscreen 0 -screen-width 1280 -screen-height 720' -WindowStyle Normal -PassThru
+    Start-Sleep -Seconds 8
+    $running.Refresh()
+    Check (-not $running.HasExited) 'older game running before the upgrade'
+}
+
 Write-Host "Installing $setup"
 $install = Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=`"$logs\install.log`"" -Wait -PassThru
 Check ($install.ExitCode -eq 0) "setup exit code 0 (got $($install.ExitCode))"
+if ($Upgrade) {
+    # Silent setup closes apps holding its files through the Restart Manager, and logs it.
+    if (-not $running.WaitForExit(5000)) { Stop-Process -Id $running.Id -Force }
+    Check ($running.HasExited -and (Select-String -Path "$logs\install.log" -Pattern 'Shutting down applications using our files' -Quiet)) 'setup closed the running older game'
+    $entries = @(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+        ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq 'SimoSlime' })
+    Check ($entries.Count -eq 1) "one SimoSlime Apps entry (got $($entries.Count))"
+}
 Check (Test-Path $exe) "SimoSlime.exe in $installDir"
 Check (Test-Path $startMenu) 'Start menu shortcut'
 Check (Test-Path $desktop) 'desktop shortcut'
